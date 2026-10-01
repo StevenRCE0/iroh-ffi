@@ -1911,6 +1911,11 @@ public protocol EndpointProtocol: AnyObject, Sendable {
     func addr()  -> EndpointAddr
     
     /**
+     * Bluetooth status, or `None` when the endpoint was bound without BLE.
+     */
+    func bleStatus()  -> BleStatus?
+    
+    /**
      * The local socket addresses this endpoint is bound to.
      */
     func boundSockets()  -> [String]
@@ -2139,6 +2144,17 @@ open func addExternalAddr(addr: String)async throws   {
 open func addr() -> EndpointAddr  {
     return try!  FfiConverterTypeEndpointAddr_lift(try! rustCall() {
     uniffi_iroh_ffi_fn_method_endpoint_addr(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Bluetooth status, or `None` when the endpoint was bound without BLE.
+     */
+open func bleStatus() -> BleStatus?  {
+    return try!  FfiConverterOptionTypeBleStatus.lift(try! rustCall() {
+    uniffi_iroh_ffi_fn_method_endpoint_ble_status(
             self.uniffiCloneHandle(),$0
     )
 })
@@ -7296,6 +7312,174 @@ public func FfiConverterTypeWatchHandle_lower(_ value: WatchHandle) -> UInt64 {
 
 
 /**
+ * One nearby Bluetooth device as the transport sees it.
+ */
+public struct BlePeer: Equatable, Hashable {
+    public var deviceId: String
+    /**
+     * Lifecycle phase (`Discovered`, `Connecting`, `Connected`, …).
+     */
+    public var phase: String
+    /**
+     * `Gatt` or `L2cap` once a data pipe exists.
+     */
+    public var connectPath: String?
+    /**
+     * The peer's endpoint id (hex) once its handshake verified it.
+     */
+    public var verifiedEndpoint: String?
+    public var consecutiveFailures: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deviceId: String, 
+        /**
+         * Lifecycle phase (`Discovered`, `Connecting`, `Connected`, …).
+         */phase: String, 
+        /**
+         * `Gatt` or `L2cap` once a data pipe exists.
+         */connectPath: String?, 
+        /**
+         * The peer's endpoint id (hex) once its handshake verified it.
+         */verifiedEndpoint: String?, consecutiveFailures: UInt32) {
+        self.deviceId = deviceId
+        self.phase = phase
+        self.connectPath = connectPath
+        self.verifiedEndpoint = verifiedEndpoint
+        self.consecutiveFailures = consecutiveFailures
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BlePeer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBlePeer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BlePeer {
+        return
+            try BlePeer(
+                deviceId: FfiConverterString.read(from: &buf), 
+                phase: FfiConverterString.read(from: &buf), 
+                connectPath: FfiConverterOptionString.read(from: &buf), 
+                verifiedEndpoint: FfiConverterOptionString.read(from: &buf), 
+                consecutiveFailures: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BlePeer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.phase, into: &buf)
+        FfiConverterOptionString.write(value.connectPath, into: &buf)
+        FfiConverterOptionString.write(value.verifiedEndpoint, into: &buf)
+        FfiConverterUInt32.write(value.consecutiveFailures, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBlePeer_lift(_ buf: RustBuffer) throws -> BlePeer {
+    return try FfiConverterTypeBlePeer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBlePeer_lower(_ value: BlePeer) -> RustBuffer {
+    return FfiConverterTypeBlePeer.lower(value)
+}
+
+
+/**
+ * Bluetooth side of an endpoint bound with `EndpointOptions.ble`.
+ */
+public struct BleStatus: Equatable, Hashable {
+    /**
+     * The local adapter is powered on (and permission was granted).
+     */
+    public var powered: Bool
+    public var txBytes: UInt64
+    public var rxBytes: UInt64
+    public var retransmits: UInt64
+    /**
+     * Nearby devices the transport is tracking.
+     */
+    public var peers: [BlePeer]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The local adapter is powered on (and permission was granted).
+         */powered: Bool, txBytes: UInt64, rxBytes: UInt64, retransmits: UInt64, 
+        /**
+         * Nearby devices the transport is tracking.
+         */peers: [BlePeer]) {
+        self.powered = powered
+        self.txBytes = txBytes
+        self.rxBytes = rxBytes
+        self.retransmits = retransmits
+        self.peers = peers
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BleStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBleStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BleStatus {
+        return
+            try BleStatus(
+                powered: FfiConverterBool.read(from: &buf), 
+                txBytes: FfiConverterUInt64.read(from: &buf), 
+                rxBytes: FfiConverterUInt64.read(from: &buf), 
+                retransmits: FfiConverterUInt64.read(from: &buf), 
+                peers: FfiConverterSequenceTypeBlePeer.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BleStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.powered, into: &buf)
+        FfiConverterUInt64.write(value.txBytes, into: &buf)
+        FfiConverterUInt64.write(value.rxBytes, into: &buf)
+        FfiConverterUInt64.write(value.retransmits, into: &buf)
+        FfiConverterSequenceTypeBlePeer.write(value.peers, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBleStatus_lift(_ buf: RustBuffer) throws -> BleStatus {
+    return try FfiConverterTypeBleStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBleStatus_lower(_ value: BleStatus) -> RustBuffer {
+    return FfiConverterTypeBleStatus.lower(value)
+}
+
+
+/**
  * Flat snapshot of the headline numbers from `noq::ConnectionStats`.
  *
  * Counters are `i64` (not `u64`) so Kotlin sees `Long`, not `ULong`.
@@ -7643,6 +7827,13 @@ public struct EndpointOptions {
      * supplied handlers.
      */
     public var protocols: [Data: ProtocolCreator]?
+    /**
+     * Also carry connections over Bluetooth LE (KeepTalking fork,
+     * `iroh-ble-transport`). The endpoint advertises and scans as both
+     * central and peripheral; nearby endpoints become reachable as an extra
+     * path next to IP and relay. Needs the platform's Bluetooth permission.
+     */
+    public var ble: Bool?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -7671,13 +7862,20 @@ public struct EndpointOptions {
          * Custom protocols to accept on this endpoint, keyed by ALPN. If provided,
          * an internal router is spawned to dispatch incoming connections to the
          * supplied handlers.
-         */protocols: [Data: ProtocolCreator]? = nil) {
+         */protocols: [Data: ProtocolCreator]? = nil, 
+        /**
+         * Also carry connections over Bluetooth LE (KeepTalking fork,
+         * `iroh-ble-transport`). The endpoint advertises and scans as both
+         * central and peripheral; nearby endpoints become reachable as an extra
+         * path next to IP and relay. Needs the platform's Bluetooth permission.
+         */ble: Bool? = nil) {
         self.preset = preset
         self.bindAddr = bindAddr
         self.secretKey = secretKey
         self.alpns = alpns
         self.relayMode = relayMode
         self.protocols = protocols
+        self.ble = ble
     }
 
     
@@ -7701,7 +7899,8 @@ public struct FfiConverterTypeEndpointOptions: FfiConverterRustBuffer {
                 secretKey: FfiConverterOptionData.read(from: &buf), 
                 alpns: FfiConverterOptionSequenceData.read(from: &buf), 
                 relayMode: FfiConverterOptionTypeRelayMode.read(from: &buf), 
-                protocols: FfiConverterOptionDictionaryDataTypeProtocolCreator.read(from: &buf)
+                protocols: FfiConverterOptionDictionaryDataTypeProtocolCreator.read(from: &buf), 
+                ble: FfiConverterOptionBool.read(from: &buf)
         )
     }
 
@@ -7712,6 +7911,7 @@ public struct FfiConverterTypeEndpointOptions: FfiConverterRustBuffer {
         FfiConverterOptionSequenceData.write(value.alpns, into: &buf)
         FfiConverterOptionTypeRelayMode.write(value.relayMode, into: &buf)
         FfiConverterOptionDictionaryDataTypeProtocolCreator.write(value.protocols, into: &buf)
+        FfiConverterOptionBool.write(value.ble, into: &buf)
     }
 }
 
@@ -9259,6 +9459,30 @@ fileprivate struct FfiConverterOptionTypeRelayMode: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeBleStatus: FfiConverterRustBuffer {
+    typealias SwiftType = BleStatus?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBleStatus.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBleStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeRelayConfig: FfiConverterRustBuffer {
     typealias SwiftType = RelayConfig?
 
@@ -9397,6 +9621,31 @@ fileprivate struct FfiConverterSequenceData: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterData.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeBlePeer: FfiConverterRustBuffer {
+    typealias SwiftType = [BlePeer]
+
+    public static func write(_ value: [BlePeer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBlePeer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BlePeer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BlePeer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBlePeer.read(from: &buf))
         }
         return seq
     }
@@ -9821,6 +10070,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_endpoint_addr() != 25271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_iroh_ffi_checksum_method_endpoint_ble_status() != 3191) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_endpoint_bound_sockets() != 64249) {

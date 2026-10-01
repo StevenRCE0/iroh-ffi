@@ -73,7 +73,10 @@ let package = Package(
               // (the nw_* / nw_path_monitor_* symbols) on Apple platforms.
               .linkedFramework("Network"),
               // iroh's netwatch queries WiFi interfaces via CoreWLAN on macOS.
-              .linkedFramework("CoreWLAN", .when(platforms: [.macOS]))
+              .linkedFramework("CoreWLAN", .when(platforms: [.macOS])),
+              // KeepTalking fork: the Bluetooth transport (blew) drives
+              // CoreBluetooth through objc2.
+              .linkedFramework("CoreBluetooth")
             ]),
         irohBinary,
         .testTarget(

@@ -233,6 +233,37 @@ pub struct EndpointOptions {
     /// supplied handlers.
     #[uniffi(default = None)]
     pub protocols: Option<HashMap<Vec<u8>, Arc<dyn ProtocolCreator>>>,
+    /// Also carry connections over Bluetooth LE (KeepTalking fork,
+    /// `iroh-ble-transport`). The endpoint advertises and scans as both
+    /// central and peripheral; nearby endpoints become reachable as an extra
+    /// path next to IP and relay. Needs the platform's Bluetooth permission.
+    #[uniffi(default = None)]
+    pub ble: Option<bool>,
+}
+
+/// Bluetooth side of an endpoint bound with `EndpointOptions.ble`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BleStatus {
+    /// The local adapter is powered on (and permission was granted).
+    pub powered: bool,
+    pub tx_bytes: u64,
+    pub rx_bytes: u64,
+    pub retransmits: u64,
+    /// Nearby devices the transport is tracking.
+    pub peers: Vec<BlePeer>,
+}
+
+/// One nearby Bluetooth device as the transport sees it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BlePeer {
+    pub device_id: String,
+    /// Lifecycle phase (`Discovered`, `Connecting`, `Connected`, …).
+    pub phase: String,
+    /// `Gatt` or `L2cap` once a data pipe exists.
+    pub connect_path: Option<String>,
+    /// The peer's endpoint id (hex) once its handshake verified it.
+    pub verified_endpoint: Option<String>,
+    pub consecutive_failures: u32,
 }
 
 #[uniffi::export(with_foreign)]
@@ -308,6 +339,9 @@ pub struct Endpoint {
     /// Handle used by sync `watch_*` FFI methods to spawn background tasks;
     /// they run on the foreign caller's thread with no tokio handle in TLS.
     tokio_handle: tokio::runtime::Handle,
+    /// The Bluetooth transport, when bound with `EndpointOptions.ble`.
+    #[cfg(feature = "ble")]
+    ble: Option<Arc<iroh_ble_transport::BleTransport>>,
 }
 
 impl Endpoint {
@@ -317,6 +351,8 @@ impl Endpoint {
             inner: ep,
             router,
             tokio_handle: tokio::runtime::Handle::current(),
+            #[cfg(feature = "ble")]
+            ble: None,
         }
     }
 
@@ -337,7 +373,15 @@ impl Endpoint {
         let preset = options.preset.unwrap_or_else(preset_n0);
         preset.apply(wrapper.clone());
 
-        if let Some(secret_key) = options.secret_key {
+        // The Bluetooth transport advertises a prefix of the endpoint's key, so
+        // it needs the key before bind: mint one here when none was given.
+        let wants_ble = options.ble == Some(true);
+        let secret_key = match options.secret_key {
+            Some(bytes) => Some(bytes),
+            None if wants_ble => Some(iroh::SecretKey::generate().to_bytes().to_vec()),
+            None => None,
+        };
+        if let Some(secret_key) = secret_key.clone() {
             wrapper.secret_key(secret_key)?;
         }
         if let Some(alpns) = options.alpns {
@@ -351,6 +395,29 @@ impl Endpoint {
         }
 
         let builder = wrapper.take_inner()?;
+        #[cfg(feature = "ble")]
+        let (builder, ble) = if wants_ble {
+            let bytes: [u8; 32] = secret_key
+                .as_deref()
+                .and_then(|b| b.try_into().ok())
+                .ok_or_else(|| anyhow::anyhow!("secret key must be 32 bytes"))?;
+            let public = iroh::SecretKey::from_bytes(&bytes).public();
+            let ble = iroh_ble_transport::BleTransport::builder()
+                .build(public)
+                .await
+                .map_err(|err| anyhow::anyhow!("bluetooth: {err}"))?;
+            let builder = builder
+                .hooks(ble.dedup_hook())
+                .add_custom_transport(ble.as_custom_transport())
+                .address_lookup(ble.address_lookup());
+            (builder, Some(ble))
+        } else {
+            (builder, None)
+        };
+        #[cfg(not(feature = "ble"))]
+        if wants_ble {
+            return Err(anyhow::anyhow!("this build has no Bluetooth transport").into());
+        }
         let endpoint = builder.bind().await?;
 
         let router = match options.protocols {
@@ -366,7 +433,46 @@ impl Endpoint {
             _ => None,
         };
 
-        Ok(Endpoint::wrap(endpoint, router))
+        #[allow(unused_mut)]
+        let mut wrapped = Endpoint::wrap(endpoint, router);
+        #[cfg(feature = "ble")]
+        {
+            wrapped.ble = ble;
+        }
+        Ok(wrapped)
+    }
+
+    /// Bluetooth status, or `None` when the endpoint was bound without BLE.
+    pub fn ble_status(&self) -> Option<BleStatus> {
+        #[cfg(feature = "ble")]
+        {
+            let ble = self.ble.as_ref()?;
+            let metrics = ble.metrics();
+            Some(BleStatus {
+                powered: matches!(
+                    ble.adapter_state(),
+                    iroh_ble_transport::BleAdapterState::PoweredOn
+                ),
+                tx_bytes: metrics.tx_bytes,
+                rx_bytes: metrics.rx_bytes,
+                retransmits: metrics.retransmits,
+                peers: ble
+                    .snapshot_peers()
+                    .into_iter()
+                    .map(|peer| BlePeer {
+                        device_id: peer.device_id.to_string(),
+                        phase: format!("{:?}", peer.phase),
+                        connect_path: peer.connect_path.map(|path| format!("{path:?}")),
+                        verified_endpoint: peer.verified_endpoint.map(|id| id.to_string()),
+                        consecutive_failures: peer.consecutive_failures,
+                    })
+                    .collect(),
+            })
+        }
+        #[cfg(not(feature = "ble"))]
+        {
+            None
+        }
     }
 
     /// The [`EndpointId`] of this endpoint.
