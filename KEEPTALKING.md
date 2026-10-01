@@ -1,6 +1,6 @@
 # KeepTalking fork
 
-Branch `keeptalking` is the vendored copy of `iroh-ffi` that the KeepTalking
+`main` of this fork is the vendored copy of `iroh-ffi` that the KeepTalking
 SDK builds against (`.package(path: "../iroh-ffi")`, product `IrohLib`).
 `upstream` is `n0-computer/iroh-ffi`.
 
