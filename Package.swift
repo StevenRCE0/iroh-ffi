@@ -31,8 +31,12 @@ let packageDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let localBuiltBinary = packageDir
     .appendingPathComponent("Iroh.xcframework/macos-arm64/libiroh_ffi.a")
 let forceRemote = ProcessInfo.processInfo.environment["IROH_FORCE_REMOTE_XCFRAMEWORK"] != nil
+// KeepTalking fork: always the local build. IrohLib.swift is regenerated from
+// this branch's Rust, so upstream's release zip no longer matches it, and
+// Xcode caches manifest evaluation by content, so a presence check made
+// before the first local build would stick to the zip. See KEEPTALKING.md.
 let useLocalXcframework = !forceRemote
-    && FileManager.default.fileExists(atPath: localBuiltBinary.path)
+_ = localBuiltBinary
 
 let irohBinary: Target = useLocalXcframework
     ? .binaryTarget(
