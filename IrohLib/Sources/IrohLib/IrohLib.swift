@@ -1911,6 +1911,14 @@ public protocol EndpointProtocol: AnyObject, Sendable {
     func addr()  -> EndpointAddr
     
     /**
+     * Resume (`true`) or pause (`false`) the Bluetooth radio. Paused, it
+     * neither scans nor advertises; links already up keep running. The
+     * transport itself can't be torn down, so this is how a Bluetooth
+     * endpoint goes quiet. No-op on an endpoint bound without BLE.
+     */
+    func bleSetRadioActive(active: Bool) async throws 
+    
+    /**
      * Bluetooth status, or `None` when the endpoint was bound without BLE.
      */
     func bleStatus()  -> BleStatus?
@@ -2147,6 +2155,29 @@ open func addr() -> EndpointAddr  {
             self.uniffiCloneHandle(),$0
     )
 })
+}
+    
+    /**
+     * Resume (`true`) or pause (`false`) the Bluetooth radio. Paused, it
+     * neither scans nor advertises; links already up keep running. The
+     * transport itself can't be torn down, so this is how a Bluetooth
+     * endpoint goes quiet. No-op on an endpoint bound without BLE.
+     */
+open func bleSetRadioActive(active: Bool)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_iroh_ffi_fn_method_endpoint_ble_set_radio_active(
+                    self.uniffiCloneHandle(),
+                    FfiConverterBool.lower(active)
+                )
+            },
+            pollFunc: ffi_iroh_ffi_rust_future_poll_void,
+            completeFunc: ffi_iroh_ffi_rust_future_complete_void,
+            freeFunc: ffi_iroh_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeIrohError__as_error_lift
+        )
 }
     
     /**
@@ -7623,6 +7654,10 @@ public struct BleStatus: Equatable, Hashable {
      * The local adapter is powered on (and permission was granted).
      */
     public var powered: Bool
+    /**
+     * Scanning and advertising are paused (`ble_set_radio_active(false)`).
+     */
+    public var radioPaused: Bool
     public var txBytes: UInt64
     public var rxBytes: UInt64
     public var retransmits: UInt64
@@ -7636,11 +7671,15 @@ public struct BleStatus: Equatable, Hashable {
     public init(
         /**
          * The local adapter is powered on (and permission was granted).
-         */powered: Bool, txBytes: UInt64, rxBytes: UInt64, retransmits: UInt64, 
+         */powered: Bool, 
+        /**
+         * Scanning and advertising are paused (`ble_set_radio_active(false)`).
+         */radioPaused: Bool, txBytes: UInt64, rxBytes: UInt64, retransmits: UInt64, 
         /**
          * Nearby devices the transport is tracking.
          */peers: [BlePeer]) {
         self.powered = powered
+        self.radioPaused = radioPaused
         self.txBytes = txBytes
         self.rxBytes = rxBytes
         self.retransmits = retransmits
@@ -7664,6 +7703,7 @@ public struct FfiConverterTypeBleStatus: FfiConverterRustBuffer {
         return
             try BleStatus(
                 powered: FfiConverterBool.read(from: &buf), 
+                radioPaused: FfiConverterBool.read(from: &buf), 
                 txBytes: FfiConverterUInt64.read(from: &buf), 
                 rxBytes: FfiConverterUInt64.read(from: &buf), 
                 retransmits: FfiConverterUInt64.read(from: &buf), 
@@ -7673,6 +7713,7 @@ public struct FfiConverterTypeBleStatus: FfiConverterRustBuffer {
 
     public static func write(_ value: BleStatus, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.powered, into: &buf)
+        FfiConverterBool.write(value.radioPaused, into: &buf)
         FfiConverterUInt64.write(value.txBytes, into: &buf)
         FfiConverterUInt64.write(value.rxBytes, into: &buf)
         FfiConverterUInt64.write(value.retransmits, into: &buf)
@@ -8045,10 +8086,10 @@ public struct EndpointOptions {
      */
     public var protocols: [Data: ProtocolCreator]?
     /**
-     * Also carry connections over Bluetooth LE (KeepTalking fork,
-     * `iroh-ble-transport`). The endpoint advertises and scans as both
-     * central and peripheral; nearby endpoints become reachable as an extra
-     * path next to IP and relay. Needs the platform's Bluetooth permission.
+     * Carry connections over Bluetooth LE (`iroh-ble-transport`, the `ble`
+     * feature). The endpoint advertises and scans as both central and
+     * peripheral. Requires `relay_mode` disabled and `clear_ip_transports`:
+     * a Bluetooth-only endpoint. Needs the platform's Bluetooth permission.
      */
     public var ble: Bool?
     /**
@@ -8089,10 +8130,10 @@ public struct EndpointOptions {
          * supplied handlers.
          */protocols: [Data: ProtocolCreator]? = nil, 
         /**
-         * Also carry connections over Bluetooth LE (KeepTalking fork,
-         * `iroh-ble-transport`). The endpoint advertises and scans as both
-         * central and peripheral; nearby endpoints become reachable as an extra
-         * path next to IP and relay. Needs the platform's Bluetooth permission.
+         * Carry connections over Bluetooth LE (`iroh-ble-transport`, the `ble`
+         * feature). The endpoint advertises and scans as both central and
+         * peripheral. Requires `relay_mode` disabled and `clear_ip_transports`:
+         * a Bluetooth-only endpoint. Needs the platform's Bluetooth permission.
          */ble: Bool? = nil, 
         /**
          * Drop the UDP/IP transports so the endpoint only uses its relay and
@@ -10101,7 +10142,8 @@ public func uniffiForeignFutureHandleCountIrohFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
- * Set the logging level.
+ * Set the logging level. Installs the process-wide subscriber, so it has no
+ * effect once one is installed (by this or `set_log_sink`).
  */
 public func setLogLevel(level: LogLevel)  {try! rustCall() {
     uniffi_iroh_ffi_fn_func_set_log_level(
@@ -10185,7 +10227,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_iroh_ffi_checksum_func_set_log_level() != 52619) {
+    if (uniffi_iroh_ffi_checksum_func_set_log_level() != 47060) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_func_set_log_sink() != 59760) {
@@ -10327,6 +10369,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_endpoint_addr() != 25271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_iroh_ffi_checksum_method_endpoint_ble_set_radio_active() != 20712) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_endpoint_ble_status() != 3191) {
