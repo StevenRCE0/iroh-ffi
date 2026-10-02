@@ -233,10 +233,10 @@ pub struct EndpointOptions {
     /// supplied handlers.
     #[uniffi(default = None)]
     pub protocols: Option<HashMap<Vec<u8>, Arc<dyn ProtocolCreator>>>,
-    /// Also carry connections over Bluetooth LE (KeepTalking fork,
-    /// `iroh-ble-transport`). The endpoint advertises and scans as both
-    /// central and peripheral; nearby endpoints become reachable as an extra
-    /// path next to IP and relay. Needs the platform's Bluetooth permission.
+    /// Carry connections over Bluetooth LE (`iroh-ble-transport`, the `ble`
+    /// feature). The endpoint advertises and scans as both central and
+    /// peripheral. Requires `relay_mode` disabled and `clear_ip_transports`:
+    /// a Bluetooth-only endpoint. Needs the platform's Bluetooth permission.
     #[uniffi(default = None)]
     pub ble: Option<bool>,
     /// Drop the UDP/IP transports so the endpoint only uses its relay and
@@ -253,6 +253,8 @@ pub struct EndpointOptions {
 pub struct BleStatus {
     /// The local adapter is powered on (and permission was granted).
     pub powered: bool,
+    /// Scanning and advertising are paused (`ble_set_radio_active(false)`).
+    pub radio_paused: bool,
     pub tx_bytes: u64,
     pub rx_bytes: u64,
     pub retransmits: u64,
@@ -383,16 +385,39 @@ impl Endpoint {
         let preset = options.preset.unwrap_or_else(preset_n0);
         preset.apply(wrapper.clone());
 
+        // The Bluetooth transport's dedup hook only promotes a pipe whose iroh
+        // handshake ran over it, so a Bluetooth endpoint must not also reach
+        // peers over a relay or IP.
+        let wants_ble = options.ble == Some(true);
+        if wants_ble {
+            let relay_disabled = matches!(
+                options.relay_mode.as_deref().map(|mode| &mode.0),
+                Some(iroh::RelayMode::Disabled)
+            );
+            if !relay_disabled || options.clear_ip_transports != Some(true) {
+                return Err(anyhow::anyhow!(
+                    "ble needs relay_mode disabled and clear_ip_transports set"
+                )
+                .into());
+            }
+        }
         // The Bluetooth transport advertises a prefix of the endpoint's key, so
         // it needs the key before bind: mint one here when none was given.
-        let wants_ble = options.ble == Some(true);
+        let minted = wants_ble && options.secret_key.is_none();
         let secret_key = match options.secret_key {
             Some(bytes) => Some(bytes),
             None if wants_ble => Some(iroh::SecretKey::generate().to_bytes().to_vec()),
             None => None,
         };
         if let Some(secret_key) = secret_key.clone() {
-            wrapper.secret_key(secret_key)?;
+            wrapper.secret_key(secret_key).map_err(|err| {
+                if minted {
+                    anyhow::anyhow!("pass EndpointOptions.secret_key for a Bluetooth endpoint: {err}")
+                        .into()
+                } else {
+                    err
+                }
+            })?;
         }
         if let Some(alpns) = options.alpns {
             wrapper.alpns(alpns);
@@ -431,12 +456,32 @@ impl Endpoint {
         if wants_ble {
             return Err(anyhow::anyhow!("this build has no Bluetooth transport").into());
         }
-        let endpoint = builder.bind().await?;
+        let endpoint = match builder.bind().await {
+            Ok(endpoint) => endpoint,
+            Err(err) => {
+                // The transport can't be torn down, only silenced: stop its
+                // scanning and advertising rather than leave them running.
+                #[cfg(feature = "ble")]
+                if let Some(ble) = &ble {
+                    let _ = ble.pause_radio().await;
+                }
+                return Err(err.into());
+            }
+        };
 
+        #[allow(unused_mut)]
+        let wrap = |router| {
+            let mut wrapped = Endpoint::wrap(endpoint.clone(), router);
+            #[cfg(feature = "ble")]
+            {
+                wrapped.ble = ble.clone();
+            }
+            wrapped
+        };
         let router = match options.protocols {
             Some(protocols) if !protocols.is_empty() => {
                 let mut router_builder = iroh::protocol::Router::builder(endpoint.clone());
-                let endpoint_wrapper = Arc::new(Endpoint::wrap(endpoint.clone(), None));
+                let endpoint_wrapper = Arc::new(wrap(None));
                 for (alpn, creator) in protocols {
                     let handler = creator.create(endpoint_wrapper.clone());
                     router_builder = router_builder.accept(alpn, ProtocolWrapper { handler });
@@ -445,14 +490,27 @@ impl Endpoint {
             }
             _ => None,
         };
+        Ok(wrap(router))
+    }
 
-        #[allow(unused_mut)]
-        let mut wrapped = Endpoint::wrap(endpoint, router);
+    /// Resume (`true`) or pause (`false`) the Bluetooth radio. Paused, it
+    /// neither scans nor advertises; links already up keep running. The
+    /// transport itself can't be torn down, so this is how a Bluetooth
+    /// endpoint goes quiet. No-op on an endpoint bound without BLE.
+    #[uniffi::method(async_runtime = "tokio")]
+    pub async fn ble_set_radio_active(&self, active: bool) -> Result<(), IrohError> {
         #[cfg(feature = "ble")]
-        {
-            wrapped.ble = ble;
+        if let Some(ble) = &self.ble {
+            let result = if active {
+                ble.resume_radio().await
+            } else {
+                ble.pause_radio().await
+            };
+            result.map_err(|err| anyhow::anyhow!("bluetooth: {err}"))?;
         }
-        Ok(wrapped)
+        #[cfg(not(feature = "ble"))]
+        let _ = active;
+        Ok(())
     }
 
     /// Bluetooth status, or `None` when the endpoint was bound without BLE.
@@ -466,6 +524,7 @@ impl Endpoint {
                     ble.adapter_state(),
                     iroh_ble_transport::BleAdapterState::PoweredOn
                 ),
+                radio_paused: ble.is_radio_paused(),
                 tx_bytes: metrics.tx_bytes,
                 rx_bytes: metrics.rx_bytes,
                 retransmits: metrics.retransmits,
@@ -1113,6 +1172,29 @@ mod tests {
         match builder.bind().await {
             Err(e) => assert!(format!("{e}").contains("already consumed")),
             Ok(_) => panic!("expected error on second bind()"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ble_requires_a_bluetooth_only_endpoint() {
+        let attempts = [
+            (None, Some(true)),
+            (Some(Arc::new(RelayMode::disabled())), None),
+            (Some(Arc::new(RelayMode::default_mode())), Some(true)),
+        ];
+        for (relay_mode, clear_ip_transports) in attempts {
+            let result = Endpoint::bind(EndpointOptions {
+                preset: Some(crate::preset_minimal()),
+                relay_mode,
+                clear_ip_transports,
+                ble: Some(true),
+                ..Default::default()
+            })
+            .await;
+            match result {
+                Err(e) => assert!(format!("{e}").contains("relay_mode disabled")),
+                Ok(_) => panic!("expected a Bluetooth endpoint with relay or IP to be refused"),
+            }
         }
     }
 

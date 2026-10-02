@@ -54,20 +54,24 @@ INCLUDE_DIR="include/apple"
 # Resolve the cargo target dir (honours CARGO_TARGET_DIR / .cargo config).
 TARGET_DIR=$(cargo metadata --format-version 1 --no-deps | python3 -c 'import json,sys;print(json.load(sys.stdin)["target_directory"])')
 
+# Cargo features for every slice and the bindgen dylib, which must agree.
+# The Swift package always ships Bluetooth (and links CoreBluetooth).
+FEATURES="${IROH_FFI_FEATURES:---features ble}"
+
 # Default lib for the bindgen-metadata step (uniffi-bindgen reads symbols
 # from a debug dylib to discover the FFI surface).
-cargo build --lib
+cargo build --lib $FEATURES
 
 echo "Building aarch64-apple-ios"
-cargo build --release --target aarch64-apple-ios
+cargo build --release --target aarch64-apple-ios $FEATURES
 echo "Building aarch64-apple-ios-sim"
-cargo build --release --target aarch64-apple-ios-sim
+cargo build --release --target aarch64-apple-ios-sim $FEATURES
 echo "Building x86_64-apple-ios"
-cargo build --release --target x86_64-apple-ios
+cargo build --release --target x86_64-apple-ios $FEATURES
 echo "Building aarch64-apple-darwin"
-cargo build --release --target aarch64-apple-darwin
+cargo build --release --target aarch64-apple-darwin $FEATURES
 echo "Building aarch64-apple-ios-macabi"
-cargo build --release --target aarch64-apple-ios-macabi
+cargo build --release --target aarch64-apple-ios-macabi $FEATURES
 
 # Wipe outputs so we don't blend stale slices into the new xcframework.
 rm -rf "$FRAMEWORK_NAME.xcframework"
