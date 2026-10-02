@@ -1964,6 +1964,18 @@ public protocol EndpointProtocol: AnyObject, Sendable {
     func isClosed()  -> Bool
     
     /**
+     * Tells the endpoint the network may have changed: it rebinds its
+     * sockets, re-runs its net report, reconnects to its relay and looks for
+     * new paths on every connection. Harmless when nothing changed.
+     *
+     * iroh notices few changes by itself on mobile platforms (on Apple ones
+     * its sleep check reads a clock that stops while the device sleeps), so
+     * call this from the platform's path monitor and when the app returns
+     * from the background.
+     */
+    func networkChange() async 
+    
+    /**
      * Resolves once the endpoint has a usable home relay.
      */
     func online() async 
@@ -2019,6 +2031,10 @@ public protocol EndpointProtocol: AnyObject, Sendable {
     /**
      * Register a callback that fires every time the underlying network stack
      * reports a change (interface up/down, NAT change, roaming, etc.).
+     *
+     * Broken upstream: iroh has no change stream, so this loops on
+     * [`Self::network_change`], which *announces* a change, and fires
+     * continuously. Use `network_change` instead.
      */
     func watchNetworkChange(callback: NetworkChangeCallback)  -> WatchHandle
     
@@ -2310,6 +2326,34 @@ open func isClosed() -> Bool  {
 }
     
     /**
+     * Tells the endpoint the network may have changed: it rebinds its
+     * sockets, re-runs its net report, reconnects to its relay and looks for
+     * new paths on every connection. Harmless when nothing changed.
+     *
+     * iroh notices few changes by itself on mobile platforms (on Apple ones
+     * its sleep check reads a clock that stops while the device sleeps), so
+     * call this from the platform's path monitor and when the app returns
+     * from the background.
+     */
+open func networkChange()async   {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_iroh_ffi_fn_method_endpoint_network_change(
+                    self.uniffiCloneHandle()
+                    
+                )
+            },
+            pollFunc: ffi_iroh_ffi_rust_future_poll_void,
+            completeFunc: ffi_iroh_ffi_rust_future_complete_void,
+            freeFunc: ffi_iroh_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
      * Resolves once the endpoint has a usable home relay.
      */
 open func online()async   {
@@ -2459,6 +2503,10 @@ open func watchHomeRelay(callback: HomeRelayCallback) -> WatchHandle  {
     /**
      * Register a callback that fires every time the underlying network stack
      * reports a change (interface up/down, NAT change, roaming, etc.).
+     *
+     * Broken upstream: iroh has no change stream, so this loops on
+     * [`Self::network_change`], which *announces* a change, and fires
+     * continuously. Use `network_change` instead.
      */
 open func watchNetworkChange(callback: NetworkChangeCallback) -> WatchHandle  {
     return try!  FfiConverterTypeWatchHandle_lift(try! rustCall() {
@@ -10398,6 +10446,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_iroh_ffi_checksum_method_endpoint_is_closed() != 32495) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_iroh_ffi_checksum_method_endpoint_network_change() != 14165) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_iroh_ffi_checksum_method_endpoint_online() != 27176) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10425,7 +10476,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_iroh_ffi_checksum_method_endpoint_watch_home_relay() != 61148) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_iroh_ffi_checksum_method_endpoint_watch_network_change() != 28710) {
+    if (uniffi_iroh_ffi_checksum_method_endpoint_watch_network_change() != 50013) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_endpointbuilder_alpns() != 55626) {

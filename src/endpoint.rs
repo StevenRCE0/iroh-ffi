@@ -733,8 +733,25 @@ impl Endpoint {
         ))
     }
 
+    /// Tells the endpoint the network may have changed: it rebinds its
+    /// sockets, re-runs its net report, reconnects to its relay and looks for
+    /// new paths on every connection. Harmless when nothing changed.
+    ///
+    /// iroh notices few changes by itself on mobile platforms (on Apple ones
+    /// its sleep check reads a clock that stops while the device sleeps), so
+    /// call this from the platform's path monitor and when the app returns
+    /// from the background.
+    #[uniffi::method(async_runtime = "tokio")]
+    pub async fn network_change(&self) {
+        self.inner.network_change().await
+    }
+
     /// Register a callback that fires every time the underlying network stack
     /// reports a change (interface up/down, NAT change, roaming, etc.).
+    ///
+    /// Broken upstream: iroh has no change stream, so this loops on
+    /// [`Self::network_change`], which *announces* a change, and fires
+    /// continuously. Use `network_change` instead.
     pub fn watch_network_change(
         &self,
         callback: Arc<dyn NetworkChangeCallback>,
@@ -1450,5 +1467,19 @@ mod tests {
         .unwrap();
 
         ep.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_network_change_returns() {
+        let ep = Endpoint::bind(EndpointOptions {
+            preset: Some(crate::preset_minimal()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        ep.network_change().await;
+        ep.close().await.unwrap();
+        // A closed endpoint ignores it.
+        ep.network_change().await;
     }
 }

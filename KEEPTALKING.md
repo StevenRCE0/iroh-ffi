@@ -15,6 +15,12 @@ Upstreamable as they are:
 - `set_log_sink(directives, sink, stderr)`: route filtered Rust `tracing`
   output to a foreign `LogSink`. `set_log_level` no longer panics when a
   subscriber is already installed.
+- `Endpoint.network_change()`: tell iroh the network may have changed. On
+  Apple platforms iroh misses most changes by itself (its sleep check reads
+  a clock that stops during sleep), so the host calls this from its path
+  monitor and on return from the background. Upstream's
+  `watch_network_change` is broken (it loops on this trigger and fires
+  continuously); it is left as is and must not be used.
 
 Fork-only:
 
