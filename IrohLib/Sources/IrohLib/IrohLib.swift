@@ -7533,6 +7533,11 @@ public struct BlePeer: Equatable, Hashable {
      * The peer's endpoint id (hex) once its handshake verified it.
      */
     public var verifiedEndpoint: String?
+    /**
+     * The 12-byte key prefix (hex) the peer advertises, once seen. The
+     * full id is in the GATT identity characteristic.
+     */
+    public var prefix: String?
     public var consecutiveFailures: UInt32
 
     // Default memberwise initializers are never public by default, so we
@@ -7546,11 +7551,16 @@ public struct BlePeer: Equatable, Hashable {
          */connectPath: String?, 
         /**
          * The peer's endpoint id (hex) once its handshake verified it.
-         */verifiedEndpoint: String?, consecutiveFailures: UInt32) {
+         */verifiedEndpoint: String?, 
+        /**
+         * The 12-byte key prefix (hex) the peer advertises, once seen. The
+         * full id is in the GATT identity characteristic.
+         */prefix: String?, consecutiveFailures: UInt32) {
         self.deviceId = deviceId
         self.phase = phase
         self.connectPath = connectPath
         self.verifiedEndpoint = verifiedEndpoint
+        self.prefix = prefix
         self.consecutiveFailures = consecutiveFailures
     }
 
@@ -7574,6 +7584,7 @@ public struct FfiConverterTypeBlePeer: FfiConverterRustBuffer {
                 phase: FfiConverterString.read(from: &buf), 
                 connectPath: FfiConverterOptionString.read(from: &buf), 
                 verifiedEndpoint: FfiConverterOptionString.read(from: &buf), 
+                prefix: FfiConverterOptionString.read(from: &buf), 
                 consecutiveFailures: FfiConverterUInt32.read(from: &buf)
         )
     }
@@ -7583,6 +7594,7 @@ public struct FfiConverterTypeBlePeer: FfiConverterRustBuffer {
         FfiConverterString.write(value.phase, into: &buf)
         FfiConverterOptionString.write(value.connectPath, into: &buf)
         FfiConverterOptionString.write(value.verifiedEndpoint, into: &buf)
+        FfiConverterOptionString.write(value.prefix, into: &buf)
         FfiConverterUInt32.write(value.consecutiveFailures, into: &buf)
     }
 }
