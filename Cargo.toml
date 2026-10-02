@@ -15,6 +15,7 @@ rust-version = "1.91"
 
 [workspace]
 members = ["iroh-js"]
+exclude = ["vendor/iroh-ble-transport"]
 
 [package.metadata.maturin]
 name = "iroh"
@@ -40,9 +41,9 @@ ble = ["dep:iroh-ble-transport"]
 anyhow = "1.0.69"
 async-trait = "0.1.80"
 iroh = { version = "1.0.0", features = ["unstable-custom-transports"] }
-# KeepTalking fork: Bluetooth LE as an iroh custom transport. AGPL-3.0 —
-# see KEEPTALKING.md before shipping a build that includes it.
-iroh-ble-transport = { version = "=0.5.1-beta.5", optional = true }
+# KeepTalking fork: Bluetooth LE as an iroh custom transport, vendored
+# (AGPL-3.0, patched — see KEEPTALKING.md).
+iroh-ble-transport = { path = "vendor/iroh-ble-transport", version = "=0.5.1-beta.5", optional = true }
 iroh-base = { version = "1.0.0" }
 iroh-metrics = { version = "1.0.0" }
 iroh-relay = { version = "1.0.0", default-features = false }

@@ -1759,8 +1759,6 @@ dependencies = [
 [[package]]
 name = "iroh-ble-transport"
 version = "0.5.1-beta.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "481d3d848c4c9f0f2d478082e9ce936cff435f8170fdf5eec5764c06e6bbd16d"
 dependencies = [
  "arc-swap",
  "async-stream",
