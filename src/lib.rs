@@ -104,7 +104,8 @@ pub fn set_log_sink(directives: String, sink: std::sync::Arc<dyn LogSink>, stder
         .is_ok()
 }
 
-/// Set the logging level.
+/// Set the logging level. Installs the process-wide subscriber, so it has no
+/// effect once one is installed (by this or `set_log_sink`).
 #[uniffi::export]
 pub fn set_log_level(level: LogLevel) {
     use tracing_subscriber::{fmt, prelude::*, reload};
@@ -112,8 +113,8 @@ pub fn set_log_level(level: LogLevel) {
     let (filter, _) = reload::Layer::new(filter);
     let mut layer = fmt::Layer::default();
     layer.set_ansi(false);
-    tracing_subscriber::registry()
+    let _ = tracing_subscriber::registry()
         .with(filter)
         .with(layer)
-        .init();
+        .try_init();
 }
