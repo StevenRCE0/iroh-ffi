@@ -239,6 +239,13 @@ pub struct EndpointOptions {
     /// path next to IP and relay. Needs the platform's Bluetooth permission.
     #[uniffi(default = None)]
     pub ble: Option<bool>,
+    /// Drop the UDP/IP transports so the endpoint only uses its relay and
+    /// custom transports. With `relay_mode` disabled and `ble` on, this is
+    /// a Bluetooth-only endpoint — the setup `iroh-ble-transport` needs for
+    /// its handshakes to run over Bluetooth (its dedup hook only verifies a
+    /// pipe that carried the handshake).
+    #[uniffi(default = None)]
+    pub clear_ip_transports: Option<bool>,
 }
 
 /// Bluetooth side of an endpoint bound with `EndpointOptions.ble`.
@@ -394,7 +401,10 @@ impl Endpoint {
             wrapper.bind_addr(addr)?;
         }
 
-        let builder = wrapper.take_inner()?;
+        let mut builder = wrapper.take_inner()?;
+        if options.clear_ip_transports == Some(true) {
+            builder = builder.clear_ip_transports();
+        }
         #[cfg(feature = "ble")]
         let (builder, ble) = if wants_ble {
             let bytes: [u8; 32] = secret_key

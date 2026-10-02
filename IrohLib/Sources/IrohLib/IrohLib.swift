@@ -7834,6 +7834,14 @@ public struct EndpointOptions {
      * path next to IP and relay. Needs the platform's Bluetooth permission.
      */
     public var ble: Bool?
+    /**
+     * Drop the UDP/IP transports so the endpoint only uses its relay and
+     * custom transports. With `relay_mode` disabled and `ble` on, this is
+     * a Bluetooth-only endpoint — the setup `iroh-ble-transport` needs for
+     * its handshakes to run over Bluetooth (its dedup hook only verifies a
+     * pipe that carried the handshake).
+     */
+    public var clearIpTransports: Bool?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -7868,7 +7876,14 @@ public struct EndpointOptions {
          * `iroh-ble-transport`). The endpoint advertises and scans as both
          * central and peripheral; nearby endpoints become reachable as an extra
          * path next to IP and relay. Needs the platform's Bluetooth permission.
-         */ble: Bool? = nil) {
+         */ble: Bool? = nil, 
+        /**
+         * Drop the UDP/IP transports so the endpoint only uses its relay and
+         * custom transports. With `relay_mode` disabled and `ble` on, this is
+         * a Bluetooth-only endpoint — the setup `iroh-ble-transport` needs for
+         * its handshakes to run over Bluetooth (its dedup hook only verifies a
+         * pipe that carried the handshake).
+         */clearIpTransports: Bool? = nil) {
         self.preset = preset
         self.bindAddr = bindAddr
         self.secretKey = secretKey
@@ -7876,6 +7891,7 @@ public struct EndpointOptions {
         self.relayMode = relayMode
         self.protocols = protocols
         self.ble = ble
+        self.clearIpTransports = clearIpTransports
     }
 
     
@@ -7900,7 +7916,8 @@ public struct FfiConverterTypeEndpointOptions: FfiConverterRustBuffer {
                 alpns: FfiConverterOptionSequenceData.read(from: &buf), 
                 relayMode: FfiConverterOptionTypeRelayMode.read(from: &buf), 
                 protocols: FfiConverterOptionDictionaryDataTypeProtocolCreator.read(from: &buf), 
-                ble: FfiConverterOptionBool.read(from: &buf)
+                ble: FfiConverterOptionBool.read(from: &buf), 
+                clearIpTransports: FfiConverterOptionBool.read(from: &buf)
         )
     }
 
@@ -7912,6 +7929,7 @@ public struct FfiConverterTypeEndpointOptions: FfiConverterRustBuffer {
         FfiConverterOptionTypeRelayMode.write(value.relayMode, into: &buf)
         FfiConverterOptionDictionaryDataTypeProtocolCreator.write(value.protocols, into: &buf)
         FfiConverterOptionBool.write(value.ble, into: &buf)
+        FfiConverterOptionBool.write(value.clearIpTransports, into: &buf)
     }
 }
 
