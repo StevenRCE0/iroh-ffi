@@ -54,7 +54,7 @@ tokio = "1.25.0"
 uniffi = { version = "0.31.1", features = ["cli", "tokio"] }
 url = "2.4"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.17" }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 serde = { version = "1.0.196", features = ["derive"] }
 derive_more = { version = "2.0", features = ["debug"] }
 n0-future = "0.3"

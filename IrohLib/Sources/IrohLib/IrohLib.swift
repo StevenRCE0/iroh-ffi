@@ -4135,6 +4135,211 @@ public func FfiConverterTypeIrohError__as_error_lower(_ value: IrohError) -> Rus
 
 
 /**
+ * Receives formatted Rust log lines (KeepTalking fork). Called from Rust
+ * threads, so implementations must be thread-safe.
+ */
+public protocol LogSink: AnyObject, Sendable {
+    
+    func line(line: String) 
+    
+}
+/**
+ * Receives formatted Rust log lines (KeepTalking fork). Called from Rust
+ * threads, so implementations must be thread-safe.
+ */
+open class LogSinkImpl: LogSink, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_iroh_ffi_fn_clone_logsink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_iroh_ffi_fn_free_logsink(handle, $0) }
+    }
+
+    
+
+    
+open func line(line: String)  {try! rustCall() {
+    uniffi_iroh_ffi_fn_method_logsink_line(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(line),$0
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLogSink {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceLogSink = UniffiVTableCallbackInterfaceLogSink(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeLogSink.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface LogSink: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeLogSink.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface LogSink: handle missing in uniffiClone")
+            }
+        },
+        line: { (
+            uniffiHandle: UInt64,
+            line: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLogSink.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.line(
+                     line: try FfiConverterString.lift(line)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLogSink> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLogSink>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitLogSink() {
+    uniffi_iroh_ffi_fn_init_callback_vtable_logsink(UniffiCallbackInterfaceLogSink.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogSink: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<LogSink>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = LogSink
+
+    public static func lift(_ handle: UInt64) throws -> LogSink {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LogSinkImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: LogSink) -> UInt64 {
+         if let rustImpl = value as? LogSinkImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogSink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LogSink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogSink_lift(_ handle: UInt64) throws -> LogSink {
+    return try FfiConverterTypeLogSink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogSink_lower(_ value: LogSink) -> UInt64 {
+    return FfiConverterTypeLogSink.lower(value)
+}
+
+
+
+
+
+
+/**
  * Callback invoked when a network-stack change is detected (interface up/down,
  * roaming, etc.).
  */
@@ -9893,6 +10098,22 @@ public func setLogLevel(level: LogLevel)  {try! rustCall() {
 }
 }
 /**
+ * Route Rust `tracing` output, filtered by an `EnvFilter` directive string
+ * (e.g. `"iroh_ble_transport=debug,blew=debug,warn"`), to `sink` — and to
+ * stderr when `stderr` is true. Installs the process-wide subscriber, so
+ * only the first call (of this or `set_log_level`) takes effect; returns
+ * whether this one did.
+ */
+public func setLogSink(directives: String, sink: LogSink, stderr: Bool) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_iroh_ffi_fn_func_set_log_sink(
+        FfiConverterString.lower(directives),
+        FfiConverterTypeLogSink_lower(sink),
+        FfiConverterBool.lower(stderr),$0
+    )
+})
+}
+/**
  * The minimal preset (no external dependencies; good for tests / offline).
  */
 public func presetMinimal() -> Preset  {
@@ -9955,6 +10176,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_iroh_ffi_checksum_func_set_log_level() != 52619) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_iroh_ffi_checksum_func_set_log_sink() != 59760) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_iroh_ffi_checksum_func_preset_minimal() != 1543) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -9965,6 +10189,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_func_preset_iroh_services() != 59955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_iroh_ffi_checksum_method_logsink_line() != 53737) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_iroh_ffi_checksum_method_accepting_alpn() != 1935) {
@@ -10384,6 +10611,7 @@ private let initializationResult: InitializationResult = {
 
     uniffiCallbackInitAddrChangeCallback()
     uniffiCallbackInitHomeRelayCallback()
+    uniffiCallbackInitLogSink()
     uniffiCallbackInitNetworkChangeCallback()
     uniffiCallbackInitPathChangeCallback()
     uniffiCallbackInitPathEventCallback()
