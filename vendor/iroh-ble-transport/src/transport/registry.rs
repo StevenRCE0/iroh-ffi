@@ -2125,6 +2125,7 @@ impl Registry {
                     role: entry.role,
                     l2cap_upgrade_failed: entry.l2cap_upgrade_failed,
                     verified_endpoint: entry.verified_endpoint,
+                    prefix: entry.prefix,
                 },
             );
         }
@@ -2248,6 +2249,8 @@ pub struct PeerStateSummary {
     pub role: crate::transport::peer::ConnectRole,
     pub l2cap_upgrade_failed: bool,
     pub verified_endpoint: Option<iroh_base::EndpointId>,
+    /// KeepTalking patch: the advertised key prefix, once seen.
+    pub prefix: Option<crate::transport::peer::KeyPrefix>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

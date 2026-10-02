@@ -9,15 +9,25 @@ SDK builds against (`.package(path: "../iroh-ffi")`, product `IrohLib`).
 - iroh pinned to **1.3.0** in `Cargo.lock`, matching the Rust `kt-sfu`
   hub + relay it talks to (`KeepTalkingSFU`, branch `iroh-sfu`).
 - **Bluetooth LE** (`ble` feature, on by default): `EndpointOptions.ble`
-  adds [`iroh-ble-transport`](https://github.com/mcginty/iroh-ble-transport)
-  as a custom transport (with its dedup hook and address lookup), and
-  `Endpoint.bleStatus()` reports the adapter, byte counters and nearby
-  devices. The package links CoreBluetooth.
+  adds `iroh-ble-transport` as a custom transport (with its dedup hook and
+  address lookup), and `Endpoint.bleStatus()` reports the adapter, byte
+  counters and nearby devices (with their advertised key prefix). The
+  package links CoreBluetooth.
+- **Vendored `iroh-ble-transport`** in `vendor/iroh-ble-transport`
+  (0.5.1-beta.5, upstream [mcginty/iroh-ble-transport] `77b5eb9`). The
+  first vendor commit is verbatim; KeepTalking patches follow as separate
+  commits:
+  - an identity characteristic (`69726f06-…`, read-only) serving the full
+    32-byte endpoint id — adverts carry only a 12-byte prefix, which can't
+    be dialled, so a peer that never learned the id elsewhere reads it
+    there;
+  - `BlePeerInfo.prefix`: each device's advertised key prefix.
 
-  ⚠️ `iroh-ble-transport` and its `blew` backend are **AGPL-3.0**. Fine for
-  development; any distributed build (TestFlight, App Store) that includes
-  them needs their commercial licence first, or build without the feature
-  (`--no-default-features`).
+  `iroh-ble-transport` and its `blew` backend are **AGPL-3.0**. KeepTalking
+  complies with the AGPL, so shipped builds may include them;
+  `--no-default-features` builds without Bluetooth.
+
+[mcginty/iroh-ble-transport]: https://github.com/mcginty/iroh-ble-transport
 
 Future changes stay here rather than upstream: relay-only endpoints
 (`clear_ip_transports`), a path-selection policy, and custom transports

@@ -270,6 +270,9 @@ pub struct BlePeer {
     pub connect_path: Option<String>,
     /// The peer's endpoint id (hex) once its handshake verified it.
     pub verified_endpoint: Option<String>,
+    /// The 12-byte key prefix (hex) the peer advertises, once seen. The
+    /// full id is in the GATT identity characteristic.
+    pub prefix: Option<String>,
     pub consecutive_failures: u32,
 }
 
@@ -474,6 +477,9 @@ impl Endpoint {
                         phase: format!("{:?}", peer.phase),
                         connect_path: peer.connect_path.map(|path| format!("{path:?}")),
                         verified_endpoint: peer.verified_endpoint.map(|id| id.to_string()),
+                        prefix: peer
+                            .prefix
+                            .map(|prefix| prefix.iter().map(|b| format!("{b:02x}")).collect()),
                         consecutive_failures: peer.consecutive_failures,
                     })
                     .collect(),

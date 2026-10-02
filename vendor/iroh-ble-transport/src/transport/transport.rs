@@ -41,11 +41,18 @@ use crate::transport::watchdog::run_watchdog;
 /// Unique transport discriminator — ASCII "BLE".
 pub const BLE_TRANSPORT_ID: u64 = 0x42_4C_45;
 
-const IROH_SERVICE_UUID: Uuid = uuid!("69726f01-8e45-4c2c-b3a5-331f3098b5c2");
+/// The iroh GATT service. Public (KeepTalking patch) so out-of-band readers
+/// of [`IROH_IDENTITY_CHAR_UUID`] can find it.
+pub const IROH_SERVICE_UUID: Uuid = uuid!("69726f01-8e45-4c2c-b3a5-331f3098b5c2");
 const IROH_C2P_CHAR_UUID: Uuid = uuid!("69726f02-8e45-4c2c-b3a5-331f3098b5c2");
 const IROH_P2C_CHAR_UUID: Uuid = uuid!("69726f03-8e45-4c2c-b3a5-331f3098b5c2");
 pub(crate) const IROH_PSM_CHAR_UUID: Uuid = uuid!("69726f04-8e45-4c2c-b3a5-331f3098b5c2");
 pub(crate) const IROH_VERSION_CHAR_UUID: Uuid = uuid!("69726f05-8e45-4c2c-b3a5-331f3098b5c2");
+/// KeepTalking patch: the full 32-byte endpoint id, readable by anyone in
+/// range. Adverts carry only a 12-byte prefix, which can't be dialled, so
+/// a peer that never learned our id elsewhere reads it here. It's what the
+/// advert already half-reveals; the iroh handshake still proves the key.
+pub const IROH_IDENTITY_CHAR_UUID: Uuid = uuid!("69726f06-8e45-4c2c-b3a5-331f3098b5c2");
 
 /// On-wire protocol version served by the peripheral on the VERSION
 /// characteristic and verified by the central immediately after connect.
@@ -182,7 +189,7 @@ fn iroh_key_uuid(endpoint_id: &EndpointId) -> Uuid {
     Uuid::from_bytes(bytes)
 }
 
-fn build_gatt_services(key_uuid: Uuid) -> Vec<GattService> {
+fn build_gatt_services(key_uuid: Uuid, local_id: &EndpointId) -> Vec<GattService> {
     let characteristics = vec![
         GattCharacteristic {
             uuid: IROH_C2P_CHAR_UUID,
@@ -212,6 +219,13 @@ fn build_gatt_services(key_uuid: Uuid) -> Vec<GattService> {
             properties: CharacteristicProperties::READ,
             permissions: AttributePermissions::READ,
             value: vec![],
+            descriptors: vec![],
+        },
+        GattCharacteristic {
+            uuid: IROH_IDENTITY_CHAR_UUID,
+            properties: CharacteristicProperties::READ,
+            permissions: AttributePermissions::READ,
+            value: local_id.as_bytes().to_vec(),
             descriptors: vec![],
         },
     ];
@@ -477,7 +491,7 @@ impl BleTransport {
             .map_err(adapter_wait_error)?;
 
         let key_uuid = iroh_key_uuid(&local_id);
-        let services = build_gatt_services(key_uuid);
+        let services = build_gatt_services(key_uuid, &local_id);
         construct_step(
             "register_gatt_services",
             register_gatt_services(&peripheral, &services),
@@ -761,6 +775,7 @@ impl BleTransport {
                 consecutive_failures: state.consecutive_failures,
                 connect_path: state.connect_path,
                 verified_endpoint: state.verified_endpoint,
+                prefix: state.prefix,
             })
             .collect()
     }
@@ -774,6 +789,8 @@ pub struct BlePeerInfo {
     pub consecutive_failures: u32,
     pub connect_path: Option<ConnectPath>,
     pub verified_endpoint: Option<EndpointId>,
+    /// KeepTalking patch: the key prefix the peer advertises, once seen.
+    pub prefix: Option<crate::transport::peer::KeyPrefix>,
 }
 
 impl BlePeerInfo {
@@ -791,6 +808,7 @@ impl BlePeerInfo {
             consecutive_failures,
             connect_path,
             verified_endpoint,
+            prefix: None,
         }
     }
 }
