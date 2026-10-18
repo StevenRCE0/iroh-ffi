@@ -123,3 +123,7 @@ kotlin/android/src/main/jniLibs/
 /site
 
 /.xcode-verify-ddata
+# Linux build products of make_swift_linux.sh (the static library and the
+# uniffi header the module map names), regenerated like the xcframework.
+/IrohLib/Linux/lib/
+/IrohLib/Linux/Iroh/iroh_ffiFFI.h

@@ -74,3 +74,22 @@ RUSTUP_TOOLCHAIN=stable ./make_swift.sh
   matches: `IrohLib.swift` is regenerated from this branch's Rust and includes
   `preset_iroh_services`, which the zip lacks. Publishing our own zip is the
   fix once the SDK consumes this fork by URL.
+
+## Building for Linux
+
+```bash
+./make_swift_linux.sh
+```
+
+- Builds `libiroh_ffi.a` (release) into `IrohLib/Linux/lib/` and generates the
+  uniffi header beside the module map in `IrohLib/Linux/Iroh/`, both
+  gitignored. On Linux `Package.swift` declares `Iroh` as a system module over
+  them instead of the xcframework.
+- The Swift binding stays the checked-in `IrohLib.swift`. The script checks
+  that this Rust still generates it byte for byte and stops if not.
+- `ble` is off unless `IROH_FFI_FEATURES=ble`: its backend drives
+  CoreBluetooth. The Bluetooth API exists either way, and binding a
+  Bluetooth endpoint fails at runtime without it. Cargo still reads the
+  optional dependency's manifest, so `../iroh-ble-transport` must be checked
+  out; the upstream release commit (`77b5eb9`) is enough for that, and
+  leaves `Cargo.lock` unchanged.

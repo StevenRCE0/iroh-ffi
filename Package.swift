@@ -47,6 +47,30 @@ let irohBinary: Target = useLocalXcframework
         url: "https://github.com/n0-computer/iroh-ffi/releases/download/\(releaseTag)/IrohLib.xcframework.zip",
         checksum: releaseChecksum)
 
+#if os(Linux)
+// Linux has no xcframework: `make_swift_linux.sh` builds the static library
+// into IrohLib/Linux/lib and generates the uniffi C header beside the module
+// map in IrohLib/Linux/Iroh, both gitignored like the xcframework. The Swift
+// binding is the checked-in one Apple uses; the FFI keeps the same surface
+// with or without the `ble` feature, so it links against either build.
+let linuxLibraryDir = packageDir.appendingPathComponent("IrohLib/Linux/lib").path
+let package = Package(
+    name: "IrohLib",
+    products: [
+        .library(name: "IrohLib", targets: ["IrohLib"]),
+    ],
+    targets: [
+        .systemLibrary(name: "Iroh", path: "IrohLib/Linux/Iroh"),
+        .target(
+            name: "IrohLib",
+            dependencies: ["Iroh"],
+            path: "IrohLib/Sources/IrohLib",
+            // Only the static library is staged there, so `link "iroh_ffi"`
+            // in the module map links it in rather than a shared one.
+            linkerSettings: [.unsafeFlags(["-L", linuxLibraryDir])]),
+    ]
+)
+#else
 let package = Package(
     name: "IrohLib",
     platforms: [
@@ -85,3 +109,4 @@ let package = Package(
             path: "IrohLib/Tests/IrohLibTests"),
     ]
 )
+#endif

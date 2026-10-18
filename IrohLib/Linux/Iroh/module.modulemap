@@ -1,0 +1,16 @@
+// The C side of IrohLib on Linux: the uniffi header and the Rust static
+// library, both produced by make_swift_linux.sh. Named `Iroh` because that is
+// what the shared binding imports (make_swift.sh renames uniffi's module).
+module Iroh [system] {
+    header "iroh_ffiFFI.h"
+    link "iroh_ffi"
+    // What the Rust staticlib needs from the system
+    // (`cargo rustc --crate-type staticlib -- --print native-static-libs`).
+    link "gcc_s"
+    link "util"
+    link "rt"
+    link "pthread"
+    link "m"
+    link "dl"
+    export *
+}
